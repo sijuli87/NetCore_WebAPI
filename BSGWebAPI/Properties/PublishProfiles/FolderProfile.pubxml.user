@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+https://go.microsoft.com/fwlink/?LinkID=208121. 
+-->
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <_PublishTargetUrl>C:\BSGWebAPI</_PublishTargetUrl>
+    <History>True|2022-06-15T11:16:09.3081354Z;True|2022-06-15T01:44:26.1050060+07:00;True|2022-06-15T01:15:08.6249296+07:00;</History>
+  </PropertyGroup>
+</Project>
