@@ -1,9 +1,10 @@
 ﻿using BSGWebAPI.Models;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Data;
+using System.Data.SqlClient;
+using BS = BCrypt.Net.BCrypt;
 
 namespace BSGWebAPI.Controllers
 {
@@ -11,25 +12,14 @@ namespace BSGWebAPI.Controllers
     [ApiController]
     public class AccountController : ControllerBase
     {
+        private IConfiguration Configuration;
         private readonly JwtSettings jwtSettings;
-        public AccountController(JwtSettings jwtSettings)
+        public AccountController(JwtSettings jwtSettings, IConfiguration _configuration)
         {
             this.jwtSettings = jwtSettings;
+            Configuration = _configuration;
         }
-        private IEnumerable<Users> logins = new List<Users>() {
-            new Users() {
-                Id = Guid.NewGuid(),
-                EmailId = "admin@gmail.com",
-                UserName = "Admin",
-                Password = "Admin",
-            },
-            new Users() {
-                Id = Guid.NewGuid(),
-                EmailId = "user@gmail.com",
-                UserName = "User1",
-                Password = "User1",
-            }
-        };
+        
         [HttpPost]
         public IActionResult GetToken(UserLogins userLogins)
         {
@@ -37,15 +27,15 @@ namespace BSGWebAPI.Controllers
             {
                 var UserTokens = new UserTokens();
                 var Token = new Tokens();
-                var ValidUser = logins.Any(x => x.UserName.Equals(userLogins.UserName, StringComparison.OrdinalIgnoreCase));
+                bool ValidUser = ValidateUser(userLogins.UserName);
                 if (!ValidUser)
                 {
-                    return BadRequest("Invalid UserName");                    
+                    return BadRequest("Invalid UserName");
                 }
-                var ValidPassword = logins.Any(x => x.Password.Equals(userLogins.Password, StringComparison.OrdinalIgnoreCase));
+                bool ValidPassword = ValidatePassword(userLogins);
                 if (ValidPassword)
                 {
-                    var user = logins.FirstOrDefault(x => x.UserName.Equals(userLogins.UserName, StringComparison.OrdinalIgnoreCase));
+                    var user = logins(userLogins);
                     UserTokens = JwtHelpers.JwtHelpers.GenTokenkey(new UserTokens()
                     {
                         EmailId = user.EmailId,
@@ -71,15 +61,89 @@ namespace BSGWebAPI.Controllers
                 throw;
             }
         }
-        /// <summary>
-        /// Get List of UserAccounts
-        /// </summary>
-        /// <returns>List Of UserAccounts</returns>
-        [HttpGet]
-        [Authorize(AuthenticationSchemes = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)]
-        public IActionResult GetList()
+
+        #region Functions
+        private bool ValidateUser(string UserName)
         {
-            return Ok(logins);
+            bool isValidUser = false;
+            string strConn = this.Configuration.GetConnectionString("DefaultConnection");
+            using (SqlConnection openCon = new SqlConnection(strConn))
+            {
+                string selectInquiry = "SELECT UserName FROM USERS WHERE UserName = @UserName";
+                using (SqlCommand querySelectInquiry = new SqlCommand(selectInquiry))
+                {
+                    querySelectInquiry.Connection = openCon;
+                    querySelectInquiry.Parameters.Add("@UserName", SqlDbType.VarChar, 50).Value = UserName;
+                    openCon.Open();
+
+                    using (SqlDataReader reader = querySelectInquiry.ExecuteReader())
+                    {
+                        if (reader.HasRows)
+                        {
+                            isValidUser = true;
+                        }
+                    }
+                }
+            }
+            return isValidUser;
         }
+        private bool ValidatePassword(UserLogins userLogins)
+        {
+            bool isPasswordValid = false;
+            string strConn = this.Configuration.GetConnectionString("DefaultConnection");
+            using (SqlConnection openCon = new SqlConnection(strConn))
+            {
+                string selectInquiry = "SELECT Password FROM USERS WHERE UserName = @UserName";
+                using (SqlCommand querySelectInquiry = new SqlCommand(selectInquiry))
+                {
+                    querySelectInquiry.Connection = openCon;
+                    querySelectInquiry.Parameters.Add("@UserName", SqlDbType.VarChar, 50).Value = userLogins.UserName;
+                    openCon.Open();
+
+                    using (SqlDataReader reader = querySelectInquiry.ExecuteReader())
+                    {
+                        if (reader.HasRows)
+                        {
+                            if (reader.Read())
+                            {
+                                string fromDBHashedPassword = reader["Password"].ToString();
+                                isPasswordValid = BS.Verify(userLogins.Password, fromDBHashedPassword);
+                            }
+                        }
+                    }
+                }
+            }
+            return isPasswordValid;
+        }
+        private Users logins(UserLogins userLogins)
+        {
+            Users users = new Users();
+            string strConn = this.Configuration.GetConnectionString("DefaultConnection");
+            using (SqlConnection openCon = new SqlConnection(strConn))
+            {
+                string selectInquiry = "SELECT * FROM USERS WHERE UserName = @UserName";
+                using (SqlCommand querySelectInquiry = new SqlCommand(selectInquiry))
+                {
+                    querySelectInquiry.Connection = openCon;
+                    querySelectInquiry.Parameters.Add("@UserName", SqlDbType.VarChar, 50).Value = userLogins.UserName;
+                    openCon.Open();
+
+                    using (SqlDataReader reader = querySelectInquiry.ExecuteReader())
+                    {
+                        if (reader.HasRows)
+                        {
+                            if (reader.Read())
+                            {
+                                users.Id = new Guid(reader["Id"].ToString());
+                                users.UserName = reader["UserName"].ToString();
+                                users.EmailId = reader["EmailId"].ToString();
+                            }
+                        }
+                    }
+                }
+            }
+            return users;
+        }
+        #endregion Functions
     }
 }
